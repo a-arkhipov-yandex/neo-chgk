@@ -16,9 +16,13 @@ def isStrSimilar(str1,str2) -> bool:
 
 ##############################
 class ChgkQuestion:
-    def __init__(self, question, answer, pic=None, comment=None, authors=None, tournament=None, date=None, sources=None) -> None:
+    def __init__(self, question: str, answer:str, pic=None, comment=None, authors=None, tournament=None, date=None, sources=None) -> None:
+        question = question.replace("\n",' ')
         self.question = question
         self.answer = answer
+        # Remove trialing dots
+        if (answer[-1] == '.'):
+            self.answer = answer[:-1]
         self.pic = pic
         self.comment = comment
         self.authors = authors
