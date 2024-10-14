@@ -1,0 +1,16 @@
+[Unit]
+Description=Neo Chgk game telegram bot
+
+[Service]
+User=alex-arkhipov
+Group=alex-arkhipov
+Type=exec
+WorkingDirectory=/home/alex-arkhipov/Neo/neo-chgk
+ExecStart=/home/alex-arkhipov/python-venv/bin/python3 /home/alex-arkhipov/Neo/neo-chgk/NeoChgk.ph
+ExecReload=/bin/kill -s HUP $MAINPID
+TimeoutSec=5
+RestartSec=5
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
