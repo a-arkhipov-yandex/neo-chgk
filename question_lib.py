@@ -1,13 +1,16 @@
 import requests
 from requests.exceptions import RequestException, JSONDecodeError
 import xmltodict
+import re
 import pickle
 from log_lib import *
 from db_lib import *
 from neo_common_lib import *
 
 CHGK_URL = "https://db.chgk.info/xml/random/answers/types1/912864593/limit1"
+PICTURE_URL = "https://db.chgk.info/images/db/"
 
+MAX_QUESTION_LENGTH = 2048
 MIN_SIMILARITY = 3
 
 def isStrSimilar(str1,str2) -> bool:
@@ -16,7 +19,9 @@ def isStrSimilar(str1,str2) -> bool:
 
 ##############################
 class ChgkQuestion:
-    def __init__(self, question: str, answer:str, pic=None, comment=None, authors=None, tournament=None, date=None, sources=None) -> None:
+    def __init__(self, question: str, answer:str,
+                 pic=None, comment=None, authors=None,
+                 tournament=None, date=None, sources=None, pass_criteria=None) -> None:
         question = question.replace("\n",' ')
         self.question = question
         self.answer = answer
@@ -29,6 +34,51 @@ class ChgkQuestion:
         self.tournament = tournament
         self.date = date
         self.sources = sources
+        self.pass_criteria = pass_criteria
+
+    def getHTMLQuestion(self) -> str:
+        text = ''
+        textDate = ''
+        if self.date:
+            textDate = f' от {self.date}'
+        if self.tournament:
+            t = replaceAngleBrackets(text=self.tournament)
+            text += f"<b>Турнир:</b> {t}{textDate}\n"
+        q = replaceAngleBrackets(text=self.question)
+        text += f"<b>Вопрос:</b> {q}\n"
+        return text
+    
+    def getHTMLAnswer(self) -> str:
+        a = replaceAngleBrackets(text=self.answer)
+        text = f'<span class="tg-spoiler"><b>Ответ:</b> {a}'+"\n"
+        if (self.pass_criteria):
+            p = replaceAngleBrackets(text=self.pass_criteria)
+            text += f"<b>Зачет:</b> {p}\n"
+        if (self.comment):
+            c = replaceAngleBrackets(text=self.comment.replace("\n",' '))
+            text += f"<b>Комментарий:</b> {c}\n"
+        if (self.sources):
+            s = replaceAngleBrackets(text=self.sources)
+            text += f"<b>Источники:</b> {s}\n"
+        text += '</span>'
+        return text
+
+def removePicture(questionText) -> str:
+    ret = re.sub(pattern='\(pic: \d+\.[\w\d]+\)', repl='', string=questionText)
+    ret = ret.strip()
+    return ret
+
+def extractPicture(questionText):
+    pics = re.findall(pattern='^\(pic: \d+\.[\w\d]+\)', string=questionText)
+    if len(pics)>0:
+        p = pics[0]
+        ret = re.findall(pattern='\d+\.[\w\d]+',string=p)
+        if (len(ret)>0):
+            return ret[0]
+    return None
+
+def getPictureUrl(pictureName) -> str:
+    return PICTURE_URL + pictureName
 
 def get_chgk_question() -> None | ChgkQuestion:
     try:
@@ -45,26 +95,37 @@ def get_chgk_question() -> None | ChgkQuestion:
     if (not q):
         log(str=f'Cannot parse URL response 2: {data}', logLevel=LOG_ERROR)
         return None
-    question = q.get('Question')
-    answer = q.get('Answer')
-    if (not question or not answer):
+    qTmp = q.get('Question')
+    aTmp = q.get('Answer')
+    if (not qTmp or not aTmp):
         log(str=f'Cannot parse URL (no question or answer): {data}', logLevel=LOG_ERROR)
         return None
+    # Limit question length
+    if (len(qTmp) > MAX_QUESTION_LENGTH):
+        qTmp = qTmp[:MAX_QUESTION_LENGTH]
+    question = qTmp
+    picTmp = extractPicture(questionText=qTmp)
+    pic = None
+    if (pic):
+        pic = getPictureUrl(pictureName=picTmp)
+        question = removePicture(questionText=qTmp)
+    answer = aTmp
     comment = q.get('Comments')
     authors = q.get('Authors')
     sources = q.get('Sources')
-    tournament = q.get('tournamentTitlernament')
+    tournament = q.get('tournamentTitle')
     date = q.get('tournamentPlayedAt')
+    pass_criteria = q.get('passCriteria')
     question = ChgkQuestion(
         question=question,
         answer=answer,
-        pic = '',
+        pic = pic,
         comment=comment,
         authors=authors,
         sources=sources,
         tournament=tournament,
-        date=date
-
+        date=date,
+        pass_criteria=pass_criteria
     )
     return question
 

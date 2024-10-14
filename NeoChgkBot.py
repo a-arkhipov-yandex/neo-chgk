@@ -22,12 +22,12 @@ VERSION = '0.9'
 
 CMD_START = '/start'
 CMD_HELP = '/help'
-CMD_SETTINGS = '/settings'
 
-CALLBACK_GAMETYPE_TAG = 'gametype:'
 CALLBACK_TYPE1_TAG = 'type1answer:'
 
 I_DONT_KNOW_ANSWERR = "!!!Idontknow!!!"
+
+MAX_ANSWER_LENGTH = 256
 
 DEFAULT_ERROR_MESSAGE = '\U00002757 Произошла ошибка. Попробуйте позже.'
 
@@ -44,16 +44,8 @@ class NeoChgkBot:
     def registerHandlers(self) -> None:
         NeoChgkBot.__bot.register_message_handler(callback=self.messageHandler, content_types=['text'])
         NeoChgkBot.__bot.register_callback_query_handler(
-            callback=self.gameTypeHandler,
-            func=lambda message: re.match(pattern=fr'^{CALLBACK_GAMETYPE_TAG}\d+$', string=message.data)
-        )
-        NeoChgkBot.__bot.register_callback_query_handler(
             callback=self.startGameHandler,
             func=lambda message: re.match(pattern=fr'^{CMD_START}$', string=message.data)
-        )
-        NeoChgkBot.__bot.register_callback_query_handler(
-            callback=self.settingsCallbackHandler,
-            func=lambda message: re.match(pattern=fr'^{CMD_SETTINGS}$', string=message.data)
         )
 
     def initBot(self) -> bool:
@@ -145,27 +137,21 @@ class NeoChgkBot:
             self.cmdHelpHandler(message=message)
         elif text == CMD_START:
             self.cmdStartHandler(message=message)
-        elif text == CMD_SETTINGS:
-            self.cmdSettingsHandler(message=message)
         else:
             self.sendMessage(telegramid=telegramid, text="Неизвестная команда.")
             self.sendMessage(telegramid=telegramid, text=self.getHelpMessage(username=message.from_user.username))
 
     # Send message to user
     # Returns: Message ID or None in case of error
-    def sendMessage(self, telegramid, text) -> int | None:
+    def sendMessage(self, telegramid, text, parse_mode=None,disable_link_preview=False) -> int | None:
         if (NeoChgkBot.isInitialized()):
-            ret = NeoChgkBot.__bot.send_message(chat_id=telegramid, text=text)
+            ret = NeoChgkBot.__bot.send_message(chat_id=telegramid, text=text, parse_mode=parse_mode, disable_web_page_preview=disable_link_preview)
             return ret.message_id
         return None
 
     # /start cmd handler
     def cmdStartHandler(self, message: types.Message) -> None:
         self.startNewGame(telegramid=message.from_user.id)
-
-    # /settings cmd handler
-    def cmdSettingsHandler(self, message: types.Message) -> None:
-        self.requestComplexity(telegramid=message.from_user.id)
 
     # /help cmd handler
     def cmdHelpHandler(self, message:types.Message) -> None:
@@ -179,72 +165,22 @@ class NeoChgkBot:
             return ''
         ret = self.getWelcomeMessage(username=username)
         return ret + f'''
-    Команды GuessPerson_Bot:
+    Команды NeoChgk_Bot:
         {CMD_HELP} - вывести помощь по командам (это сообщение)
         {CMD_START} - регистрация нового пользователя/новая игра
-        {CMD_SETTINGS} - выбрать уровень сложности и тип игры
         '''
     # Get welcome message
     def getWelcomeMessage(self, username) -> str:
         usernameMessage = ''
-        if (username != None):
-            usernameMessage = ', {username}'
+        if (username is not None):
+            usernameMessage = f', {username}'
         ret = f'''
         Добро пожаловать{usernameMessage}!
-        Это игра "Guess Person". Версия: {VERSION}
+        Это игра "Вопросы из базы Что?Где?Когда?". Версия: {VERSION}
+        Все вопросы взяты из базы: https://db.chgk.info/
+        Автор: @alex_arkhipov
         '''
         return ret
-
-    # Settings callback handler
-    def settingsCallbackHandler(self, message: types.CallbackQuery) -> None:
-        self.bot.answer_callback_query(callback_query_id=message.id)
-        self.requestGameType(telegramid=message.from_user.id)
-
-    # Request new GameType
-    def requestGameType(self, telegramid) -> None:
-        fName = self.requestGameType.__name__
-        if (not self.checkUser(telegramid=telegramid)):
-            log(str=f'{fName}: Unknown user {telegramid} provided',logLevel=LOG_ERROR)
-            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
-            return
-        # Get game type
-        game_types = Connection.getGameTypes()
-        # Request game type
-        keyboard = types.InlineKeyboardMarkup()
-        for gameType in game_types:
-            key = types.InlineKeyboardButton(text=f"{gameType[1]}", callback_data=f'{CALLBACK_GAMETYPE_TAG}{gameType[0]}')
-            keyboard.add(key)
-        question = 'Выберите тип игры:'
-        self.bot.send_message(chat_id=telegramid, text=question, reply_markup=keyboard)
-
-    def gameTypeHandler(self, message: types.CallbackQuery) -> None:
-        fName = self.gameTypeHandler.__name__
-        telegramid = message.from_user.id
-        self.bot.answer_callback_query(callback_query_id=message.id)
-        log(str=f'{fName}: Game type handler invoked for user {telegramid}: "{message.data}"',logLevel=LOG_DEBUG)
-        if (not self.checkUser(telegramid=telegramid)):
-            log(str=f'{fName}: Unknown user {telegramid} provided',logLevel=LOG_ERROR)
-            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
-            return
-        gameType = int(message.data.split(sep=':')[1])
-        if (not Connection.dbLibCheckGameType(game_type=gameType)):
-            self.sendMessage(telegramid=telegramid, text='Нет такого типа. Попробуйте еще раз.')
-            self.requestGameType(message=message)
-            return
-        # Set game type for the user
-        ret = Connection.updateUserGameType(telegramid=telegramid, gameType=gameType)
-        if (not ret):
-            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
-            return
-        # Success message
-        self.sendMessage(telegramid=telegramid, text='Настройки изменены успешно! \U00002705')
-        key1 = types.InlineKeyboardButton(text='\U0001F4AA Начать новую игру', callback_data=CMD_START)
-        key2= types.InlineKeyboardButton(text='\U0001F506 Выбрать другой тип игры/сложность', callback_data=CMD_SETTINGS)
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(key1)
-        keyboard.add(key2)
-        question = 'Что дальше?'
-        self.bot.send_message(chat_id=telegramid, text=question, reply_markup=keyboard)
 
     def startGameHandler(self, message: types.CallbackQuery) -> None:
         telegramid = message.from_user.id
@@ -295,8 +231,14 @@ class NeoChgkBot:
             self.sendMessage(telegramid=telegramid, text=f'Извините, но игра уже завершена. Введите "{CMD_START}" чтобы начать новую.')
             return
         question = decodeQuestion(pickle_question=gameInfo['question'])
-        textQuestion = question.question
-        self.sendMessage(telegramid=telegramid, text=textQuestion)
+        textQuestion = question.getHTMLQuestion()
+        if (question.pic):
+            log(str=f'{fName}: Question with picture: {url}',logLevel=LOG_DEBUG)
+            url = question.pic
+            self.bot.send_photo(chat_id=telegramid, photo=url, caption=textQuestion, parse_mode='html',disable_web_page_preview=True)
+        else:
+            log(str=f'{fName}: Question without picture',logLevel=LOG_DEBUG)
+            self.sendMessage(telegramid=telegramid, text=textQuestion, parse_mode='html',disable_link_preview=True)
         self.bot.send_message(chat_id=telegramid, text='Введите ваш вариант ответа:')
 
     # Send buttons after answer
@@ -307,10 +249,8 @@ class NeoChgkBot:
             self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
             return
         key1 = types.InlineKeyboardButton(text='\U0001F4AA Сыграть еще раз', callback_data=CMD_START)
-        key2= types.InlineKeyboardButton(text='\U0001F506 Выбрать другой тип игры/сложность', callback_data=CMD_SETTINGS)
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(key1)
-        keyboard.add(key2)
         question = 'Выберите дальнейшее действие:'
         self.bot.send_message(chat_id=telegramid, text=question, reply_markup=keyboard)
     
@@ -329,27 +269,34 @@ class NeoChgkBot:
         gameInfo = Connection.getGameInfoById(gameId=gameId)
         question = decodeQuestion(pickle_question=gameInfo['question'])
 
+        # Limit answer length
+        if (len(text) > MAX_ANSWER_LENGTH):
+            text = text[:MAX_ANSWER_LENGTH]
+            log(str=f'Слишком длинный ответ - обрезаю ({text})', logLevel=LOG_WARNING)
+
         # Finish game and return result
         finishGame(telegramid=telegramid, gameInfo=gameInfo, answer=text)
         # Get game info
         gameInfo = Connection.getGameInfoById(gameId=gameId)
         # Check result
         result = gameInfo['result']
-        correctAnswer = question.answer
-        self.showGameResult(telegramid=telegramid, result=result, correctAnswer=correctAnswer)
+        self.showGameResult(telegramid=telegramid, result=result, question=question)
     
     # Show game result
-    def showGameResult(self, telegramid, result, correctAnswer, dont_know=False) -> None:
+    def showGameResult(self, telegramid, result, question: ChgkQuestion, dont_know=False) -> None:
+        correctAnswer = question.getHTMLAnswer()
         # Check result
         if (result):
             # Answer is correct
-            self.sendMessage(telegramid=telegramid, text=f'\U00002705 Поздравляю! Вы ответили верно. Верный ответ "{correctAnswer}".')
+            text = f"\U0001F3C6 Поздравляю! Вы ответили верно.\n"
+            text += f"{correctAnswer}"
+            self.sendMessage(telegramid=telegramid, text=text, parse_mode='html',disable_link_preview=True)
         else:
-            reply_end = f'Верный ответ: "{correctAnswer}"'
-            reply_start = f'\U0000274C А вот и не верно.'
+            reply_end = f'{correctAnswer}'
+            reply_start = f"\U0000274C А вот и не верно.\n"
             if (dont_know):
                 reply_start = f'\U0001F9E0 Теперь будете знать.'                
-            self.sendMessage(telegramid=telegramid, text=f'{reply_start} {reply_end}')
+            self.sendMessage(telegramid=telegramid, text=f'{reply_start}{reply_end}', parse_mode='html',disable_link_preview=True)
         self.sendAfterAnswer(telegramid=telegramid)
 
     # Check that game N is in progress

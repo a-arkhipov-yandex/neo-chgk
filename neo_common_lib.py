@@ -101,3 +101,10 @@ def adjustText(text:str) -> str:
     text = text.replace('ё','е') # Replace 'ё' another ё
     text = text.replace('й','й') # Replace 'й'
     return text
+
+def replaceAngleBrackets(text:str) -> str:
+    if (not text):
+        return text
+    text = text.replace('<','&lt;')
+    text = text.replace('>','&gt;')
+    return text
