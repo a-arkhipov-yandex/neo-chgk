@@ -47,7 +47,7 @@ class Log:
         try:
             f = open(file=logFile, mode='w+')
             tzinfo=ZoneInfo(key='Europe/Moscow')
-            startTime = dt.now(tz=tzinfo).strftime("%d-%m-%Y %H:%M:%S")
+            startTime = dt.now(tz=tzinfo).strftime(format="%d-%m-%Y %H:%M:%S")
             f.write(f'{startTime}: GuessPerson_bot started'+"\n")
         except Exception as error:
             log(str=f'Cannot open "{logFile}": {error}', logLevel=LOG_ERROR)

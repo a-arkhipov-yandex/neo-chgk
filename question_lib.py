@@ -118,6 +118,7 @@ def get_chgk_question() -> None | ChgkQuestion:
     picTmp = extractPicture(text=qTmp)
     questionPicture = None
     if (picTmp):
+        log(str=f'Question picture found: {picTmp}', logLevel=LOG_DEBUG)
         questionPicture = getPictureUrl(pictureName=picTmp)
         question = removePicture(text=qTmp)
     answer = aTmp
@@ -127,6 +128,7 @@ def get_chgk_question() -> None | ChgkQuestion:
     if (cTmp):
         picTmp = extractPicture(text=cTmp)
         if (picTmp):
+            log(str=f'Comment picture found: {picTmp}', logLevel=LOG_DEBUG)
             commentPicture = getPictureUrl(pictureName=picTmp)
             comment = removePicture(text=cTmp)
     authors = q.get('Authors')
