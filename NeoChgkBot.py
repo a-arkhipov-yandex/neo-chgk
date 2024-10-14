@@ -1,11 +1,7 @@
-from os import getenv
-from dotenv import load_dotenv
 import telebot
-import telegram
 from telebot import types
 import re
 import requests
-from threading import Thread
 from log_lib import *
 from db_lib import *
 from neo_common_lib import *
@@ -18,16 +14,15 @@ ENV_BOTTOKENTEST = 'BOTTOKENTEST'
 ENV_TESTDB = 'TESTDB'
 ENV_TESTBOT = 'TESTBOT'
 
-VERSION = '0.9'
+VERSION = '1.0'
 
 CMD_START = '/start'
 CMD_HELP = '/help'
 
-CALLBACK_TYPE1_TAG = 'type1answer:'
-
-I_DONT_KNOW_ANSWERR = "!!!Idontknow!!!"
-
-MAX_ANSWER_LENGTH = 256
+CALLBACK_TYPE1_TAG = 'type1answer'
+CALLBACK_TYPE1_RESULT_TAG = 'type1result:'
+TYP1_CORRECT = "correct"
+TYP1_WRONG = "wrong"
 
 DEFAULT_ERROR_MESSAGE = '\U00002757 Произошла ошибка. Попробуйте позже.'
 
@@ -47,6 +42,15 @@ class NeoChgkBot:
             callback=self.startGameHandler,
             func=lambda message: re.match(pattern=fr'^{CMD_START}$', string=message.data)
         )
+        NeoChgkBot.__bot.register_callback_query_handler(
+            callback=self.answerHandlerType1,
+            func=lambda message: re.match(pattern=fr'^{CALLBACK_TYPE1_TAG}', string=message.data)
+        )
+        NeoChgkBot.__bot.register_callback_query_handler(
+            callback=self.answerResultHandlerType1,
+            func=lambda message: re.match(pattern=fr'^{CALLBACK_TYPE1_RESULT_TAG}\S+', string=message.data)
+        )
+
 
     def initBot(self) -> bool:
         # Check if bot is already initialized
@@ -232,34 +236,44 @@ class NeoChgkBot:
             return
         question = decodeQuestion(pickle_question=gameInfo['question'])
         textQuestion = question.getHTMLQuestion()
-        if (question.pic):
-            log(str=f'{fName}: Question with picture: {url}',logLevel=LOG_DEBUG)
-            url = question.pic
-            self.bot.send_photo(chat_id=telegramid, photo=url, caption=textQuestion, parse_mode='html',disable_web_page_preview=True)
-        else:
-            log(str=f'{fName}: Question without picture',logLevel=LOG_DEBUG)
-            self.sendMessage(telegramid=telegramid, text=textQuestion, parse_mode='html',disable_link_preview=True)
-        self.bot.send_message(chat_id=telegramid, text='Введите ваш вариант ответа:')
-
-    # Send buttons after answer
-    def sendAfterAnswer(self, telegramid) -> None:
-        fName = self.sendAfterAnswer.__name__
-        if (not self.checkUser(telegramid=telegramid)):
-            log(str=f'{fName}: Unknown user {telegramid} provided',logLevel=LOG_ERROR)
-            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
-            return
-        key1 = types.InlineKeyboardButton(text='\U0001F4AA Сыграть еще раз', callback_data=CMD_START)
+        questionPictureUrl = question.getQuestionPictureUrl()
+        key1 = types.InlineKeyboardButton(text='\U0001F4AA Посмотреть ответ', callback_data=CALLBACK_TYPE1_TAG)
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(key1)
-        question = 'Выберите дальнейшее действие:'
-        self.bot.send_message(chat_id=telegramid, text=question, reply_markup=keyboard)
+        if (questionPictureUrl):
+            url = questionPictureUrl
+            log(str=f'{fName}: Question with picture: {url}',logLevel=LOG_DEBUG)
+            self.bot.send_photo(chat_id=telegramid,photo=url,caption=textQuestion,parse_mode='html',reply_markup=keyboard)
+        else:
+            log(str=f'{fName}: Question without picture',logLevel=LOG_DEBUG)
+            self.bot.send_message(chat_id=telegramid,text=textQuestion, parse_mode='html',disable_web_page_preview=True,reply_markup=keyboard)
     
-    def answerHandlerType1(self, telegramid, text) -> None:
+    def answerHandlerType1(self, data:types.CallbackQuery) -> None:
         fName = self.answerHandlerType1.__name__
+        telegramid = data.from_user.id
+        gameId = Connection.getCurrentGame(telegramid=telegramid)
+        if (not gameId):
+            log(str=f'{fName}: No running game', logLevel=LOG_WARNING)
+            self.sendMessage(telegramid=telegramid, text='Нет запущенных игр. Введите "/start" чтобы начать новую.')
+            return
+        # Get question info
+        gameInfo = Connection.getGameInfoById(gameId=gameId)
+        question = decodeQuestion(pickle_question=gameInfo['question'])
+        self.showAnswer(telegramid=telegramid, question=question)
+
+    def answerResultHandlerType1(self, data:types.CallbackQuery) -> None:
+        fName = self.answerHandlerType1.__name__
+        telegramid = data.from_user.id
         if (not self.checkUser(telegramid=telegramid)):
             log(str=f'{fName}: Unknown user {telegramid} provided',logLevel=LOG_ERROR)
             self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
             return
+        text = data.data.split(sep=':')
+        if (len(text) != 2):
+            log(str=f'{fName}: Invalid data: {text}',logLevel=LOG_ERROR)
+            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
+            return
+        result = text[1]
         # Get current game
         gameId = Connection.getCurrentGame(telegramid=telegramid)
         if (not gameId):
@@ -268,35 +282,44 @@ class NeoChgkBot:
         # Get question info
         gameInfo = Connection.getGameInfoById(gameId=gameId)
         question = decodeQuestion(pickle_question=gameInfo['question'])
-
-        # Limit answer length
-        if (len(text) > MAX_ANSWER_LENGTH):
-            text = text[:MAX_ANSWER_LENGTH]
-            log(str=f'Слишком длинный ответ - обрезаю ({text})', logLevel=LOG_WARNING)
-
+        if (result == TYP1_CORRECT):
+            text = "Поздарвляю! Вы - молодец!"
+            answer = question.answer
+        elif (result == TYP1_WRONG):
+            text = "Жаль! В следующий раз обязательно получится!"
+            answer = ''
+        else:
+            log(str=f'{fName}: Invalid result: {result}',logLevel=LOG_ERROR)
+            self.sendMessage(telegramid=telegramid, text=DEFAULT_ERROR_MESSAGE)
+            return
         # Finish game and return result
-        finishGame(telegramid=telegramid, gameInfo=gameInfo, answer=text)
-        # Get game info
-        gameInfo = Connection.getGameInfoById(gameId=gameId)
-        # Check result
-        result = gameInfo['result']
-        self.showGameResult(telegramid=telegramid, result=result, question=question)
+        finishGame(telegramid=telegramid, gameInfo=gameInfo, answer=answer)
+        key1 = types.InlineKeyboardButton(text='\U0001F4AA Сыграть еще раз', callback_data=CMD_START)
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(key1)
+        question = text
+        self.bot.send_message(chat_id=telegramid, text=question, reply_markup=keyboard)
+
+    def sendAfterAnswer(self, telegramid) -> None:
+        fName = self.sendAfterAnswer.__name__
+        key1 = types.InlineKeyboardButton(text='\U00002705 Я ответил правильно', callback_data=f'{CALLBACK_TYPE1_RESULT_TAG}{TYP1_CORRECT}')
+        key2 = types.InlineKeyboardButton(text='\U0000274C Я не смог ответить', callback_data=f'{CALLBACK_TYPE1_RESULT_TAG}{TYP1_WRONG}')
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.row(key1, key2)
+        self.bot.send_message(chat_id=telegramid, text='Удалось ответить?', reply_markup=keyboard)
     
     # Show game result
-    def showGameResult(self, telegramid, result, question: ChgkQuestion, dont_know=False) -> None:
+    def showAnswer(self, telegramid, question: ChgkQuestion) -> None:
         correctAnswer = question.getHTMLAnswer()
         # Check result
-        if (result):
-            # Answer is correct
-            text = f"\U0001F3C6 Поздравляю! Вы ответили верно.\n"
-            text += f"{correctAnswer}"
-            self.sendMessage(telegramid=telegramid, text=text, parse_mode='html',disable_link_preview=True)
+        commentPictureUrl = question.getCommentPictureUrl()
+        replyText = f"{correctAnswer}"
+        if (commentPictureUrl):
+            log(str=f'Comment with picture: {commentPictureUrl}',logLevel=LOG_DEBUG)
+            self.bot.send_photo(chat_id=telegramid, photo=commentPictureUrl, caption=replyText, parse_mode='html')
         else:
-            reply_end = f'{correctAnswer}'
-            reply_start = f"\U0000274C А вот и не верно.\n"
-            if (dont_know):
-                reply_start = f'\U0001F9E0 Теперь будете знать.'                
-            self.sendMessage(telegramid=telegramid, text=f'{reply_start}{reply_end}', parse_mode='html',disable_link_preview=True)
+            log(str=f'Comment without picture',logLevel=LOG_DEBUG)
+            self.sendMessage(telegramid=telegramid, text=replyText, parse_mode='html',disable_link_preview=True)
         self.sendAfterAnswer(telegramid=telegramid)
 
     # Check that game N is in progress

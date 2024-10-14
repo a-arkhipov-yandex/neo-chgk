@@ -20,15 +20,16 @@ def isStrSimilar(str1,str2) -> bool:
 ##############################
 class ChgkQuestion:
     def __init__(self, question: str, answer:str,
-                 pic=None, comment=None, authors=None,
+                 questionPicture=None, commentPicture=None, comment=None, authors=None,
                  tournament=None, date=None, sources=None, pass_criteria=None) -> None:
-        question = question.replace("\n",' ')
+        question = question
         self.question = question
         self.answer = answer
         # Remove trialing dots
         if (answer[-1] == '.'):
             self.answer = answer[:-1]
-        self.pic = pic
+        self.__questionPictureUrl = questionPicture
+        self.__commentPictureUrl = commentPicture
         self.comment = comment
         self.authors = authors
         self.tournament = tournament
@@ -45,6 +46,8 @@ class ChgkQuestion:
             t = replaceAngleBrackets(text=self.tournament)
             text += f"<b>Турнир:</b> {t}{textDate}\n"
         q = replaceAngleBrackets(text=self.question)
+        q = q.replace("\n",' ')
+        q = q.replace('   ',"\n") # Handle question duplet
         text += f"<b>Вопрос:</b> {q}\n"
         return text
     
@@ -55,24 +58,32 @@ class ChgkQuestion:
             p = replaceAngleBrackets(text=self.pass_criteria)
             text += f"<b>Зачет:</b> {p}\n"
         if (self.comment):
-            c = replaceAngleBrackets(text=self.comment.replace("\n",' '))
+            c = self.comment.replace("\n",' ')
+            c = c.replace('   ',"\n") # Handle question duplet
+            c = replaceAngleBrackets(text=c)
             text += f"<b>Комментарий:</b> {c}\n"
         if (self.sources):
             s = replaceAngleBrackets(text=self.sources)
             text += f"<b>Источники:</b> {s}\n"
         text += '</span>'
         return text
+    
+    def getQuestionPictureUrl(self) -> str:
+        return self.__questionPictureUrl
 
-def removePicture(questionText) -> str:
-    ret = re.sub(pattern='\(pic: \d+\.[\w\d]+\)', repl='', string=questionText)
+    def getCommentPictureUrl(self) -> str:
+        return self.__commentPictureUrl
+
+def removePicture(text) -> str:
+    ret = re.sub(pattern=r'\(pic: \d+\.[\w\d]+\)', repl='', string=text)
     ret = ret.strip()
     return ret
 
-def extractPicture(questionText):
-    pics = re.findall(pattern='^\(pic: \d+\.[\w\d]+\)', string=questionText)
+def extractPicture(text):
+    pics = re.findall(pattern=r'^\(pic: \d+\.[\w\d]+\)', string=text)
     if len(pics)>0:
         p = pics[0]
-        ret = re.findall(pattern='\d+\.[\w\d]+',string=p)
+        ret = re.findall(pattern=r'\d+\.[\w\d]+',string=p)
         if (len(ret)>0):
             return ret[0]
     return None
@@ -104,13 +115,20 @@ def get_chgk_question() -> None | ChgkQuestion:
     if (len(qTmp) > MAX_QUESTION_LENGTH):
         qTmp = qTmp[:MAX_QUESTION_LENGTH]
     question = qTmp
-    picTmp = extractPicture(questionText=qTmp)
-    pic = None
-    if (pic):
-        pic = getPictureUrl(pictureName=picTmp)
-        question = removePicture(questionText=qTmp)
+    picTmp = extractPicture(text=qTmp)
+    questionPicture = None
+    if (picTmp):
+        questionPicture = getPictureUrl(pictureName=picTmp)
+        question = removePicture(text=qTmp)
     answer = aTmp
-    comment = q.get('Comments')
+    cTmp = q.get('Comments')
+    comment = cTmp
+    commentPicture = None
+    if (cTmp):
+        picTmp = extractPicture(text=cTmp)
+        if (picTmp):
+            commentPicture = getPictureUrl(pictureName=picTmp)
+            comment = removePicture(text=cTmp)
     authors = q.get('Authors')
     sources = q.get('Sources')
     tournament = q.get('tournamentTitle')
@@ -119,8 +137,9 @@ def get_chgk_question() -> None | ChgkQuestion:
     question = ChgkQuestion(
         question=question,
         answer=answer,
-        pic = pic,
+        questionPicture = questionPicture,
         comment=comment,
+        commentPicture = commentPicture,
         authors=authors,
         sources=sources,
         tournament=tournament,
