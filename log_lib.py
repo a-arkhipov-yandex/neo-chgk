@@ -51,6 +51,7 @@ class Log:
             f.write(f'{startTime}: GuessPerson_bot started'+"\n")
         except Exception as error:
             log(str=f'Cannot open "{logFile}": {error}', logLevel=LOG_ERROR)
+            return
         f.close()
 
 def initLog(logFile=None, printToo=False) -> None:
