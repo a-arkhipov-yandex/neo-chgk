@@ -302,6 +302,7 @@ class Connection:
     #   NOT_FOUND - no such user
     def getUserIdByTelegramid(telegramid):
         ret = dbLibCheckTelegramid(telegramid=telegramid)
+        telegramid = str(telegramid)
         if (not ret):
             return NOT_FOUND
         query = f"SELECT id FROM users WHERE telegramid = %(tid)s"
@@ -335,6 +336,7 @@ class Connection:
     def insertUser(telegramid, gameType=None):
         fName = Connection.insertUser.__name__
         ret = dbLibCheckTelegramid(telegramid=telegramid)
+        telegramid = str(telegramid)
         if (not ret):
             log(str=f"{fName}: Cannot insert user -  invalid telegramid format: {telegramid}",logLevel=LOG_ERROR)
             return None
