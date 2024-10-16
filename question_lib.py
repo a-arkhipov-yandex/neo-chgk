@@ -100,7 +100,7 @@ def get_chgk_question() -> None | ChgkQuestion:
     try:
         data = xmltodict.parse(xml_input=r.content)
     except Exception as e:
-        log(str=f"Error during xmlparsing: {e}", logLevel=LOG_ERROR)
+        log(str=f"Error during xmlparsing: {e}\n{r.content}", logLevel=LOG_ERROR)
         return None
     q = data.get('search')
     if (not q):
