@@ -94,9 +94,13 @@ def getPictureUrl(pictureName) -> str:
 def get_chgk_question() -> None | ChgkQuestion:
     try:
         r = requests.get(url=CHGK_URL)
-        data = xmltodict.parse(xml_input=r.content)
     except RequestException as e:
         log(str=f"Error during HHTP request: {e}", logLevel=LOG_ERROR)
+        return None
+    try:
+        data = xmltodict.parse(xml_input=r.content)
+    except Exception as e:
+        log(str=f"Error during xmlparsing: {e}", logLevel=LOG_ERROR)
         return None
     q = data.get('search')
     if (not q):
